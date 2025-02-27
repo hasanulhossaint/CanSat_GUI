@@ -1,5 +1,4 @@
 # CanSat_GUI
-# Project Title
 
 ## Required NuGet Packages
 Install these in Visual Studio:
