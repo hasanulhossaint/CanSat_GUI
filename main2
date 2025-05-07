@@ -1,0 +1,150 @@
+using System;
+using System.Drawing;
+using System.IO.Ports;
+using System.Windows.Forms;
+using ScottPlot;
+
+enum Fields { Lat, Lon, AltGps, Speed, Sats, Ax, Ay, Az, Pitch, Roll, Yaw, TempBmp, Press, AltBmp, TempDht, Hum, BattV, BattPct, RegV, CO, CO2, CH4, FreeFall, SdStatus }
+
+public class MainForm : Form
+{
+    // Labels
+    Label lblLat, lblLon, lblAlt, lblSpeed;
+    Label lblTempBmp, lblTempDht, lblHum, lblPress;
+    Label lblBattV, lblBattPct, lblRegV;
+    Label lblCO, lblCO2, lblCH4;
+    Label lblFreeFall, lblSd;
+
+    // Plots & streamers
+    FormsPlot pltAccel, pltGyro;
+    DataStreamer dsAx, dsAy, dsAz, dsPitch, dsRoll, dsYaw;
+
+    SerialPort sp;
+
+    public MainForm()
+    {
+        Text = "CanSat GUI"; Size = new Size(1200, 800);
+        BuildUI();
+        InitPlots();
+        InitSerial("COM3", 9600);
+    }
+
+    void BuildUI()
+    {
+        var panel = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
+        lblLat      = AddLabel(panel, "Lat: --");
+        lblLon      = AddLabel(panel, "Lon: --");
+        lblAlt      = AddLabel(panel, "Alt: -- m");
+        lblSpeed    = AddLabel(panel, "Spd: -- m/s");
+        lblTempBmp  = AddLabel(panel, "T(BMP): --°C");
+        lblTempDht  = AddLabel(panel, "T(DHT): --°C");
+        lblHum      = AddLabel(panel, "Hum: -- %");
+        lblPress    = AddLabel(panel, "P: -- hPa");
+        lblBattV    = AddLabel(panel, "Bat: -- V");
+        lblBattPct  = AddLabel(panel, "Bat%: --%");
+        lblRegV     = AddLabel(panel, "Reg: -- V");
+        lblCO       = AddLabel(panel, "CO: -- ppm");
+        lblCO2      = AddLabel(panel, "CO₂: -- ppm");
+        lblCH4      = AddLabel(panel, "CH₄: -- ppm");
+        lblFreeFall = AddLabel(panel, "FreeFall: No");
+        lblSd       = AddLabel(panel, "SD: --");
+        Controls.Add(panel);
+
+        pltAccel = new FormsPlot { Dock = DockStyle.Left, Width = 600 };
+        pltGyro  = new FormsPlot { Dock = DockStyle.Right, Width = 600 };
+        Controls.AddRange(new Control[] { pltAccel, pltGyro });
+    }
+
+    Label AddLabel(FlowLayoutPanel p, string text)
+    {
+        var lbl = new Label { Text = text, AutoSize = true, Margin = new Padding(10) };
+        p.Controls.Add(lbl);
+        return lbl;
+    }
+
+    void InitPlots()
+    {
+        dsAx    = pltAccel.Plot.Add.DataStreamer();
+        dsAy    = pltAccel.Plot.Add.DataStreamer();
+        dsAz    = pltAccel.Plot.Add.DataStreamer();
+        pltAccel.Plot.Legend(); pltAccel.Plot.Title("Acceleration"); pltAccel.Plot.YLabel("m/s²");
+
+        dsPitch = pltGyro.Plot.Add.DataStreamer();
+        dsRoll  = pltGyro.Plot.Add.DataStreamer();
+        dsYaw   = pltGyro.Plot.Add.DataStreamer();
+        pltGyro.Plot.Legend(); pltGyro.Plot.Title("Gyroscope"); pltGyro.Plot.YLabel("°/s");
+    }
+
+    void InitSerial(string port, int baud)
+    {
+        sp = new SerialPort(port, baud) { NewLine = "\n" };
+        sp.DataReceived += Sp_DataReceived;
+        sp.Open();
+    }
+
+    void Sp_DataReceived(object s, SerialDataReceivedEventArgs e)
+    {
+        string line = sp.ReadLine();
+        string[] v = line.Split(',');
+        if (v.Length < 23) return;
+
+        if (!double.TryParse(v[(int)Fields.Lat],    out double lat))     return;
+        if (!double.TryParse(v[(int)Fields.Lon],    out double lon))     return;
+        if (!double.TryParse(v[(int)Fields.AltGps], out double alt))     return;
+        if (!double.TryParse(v[(int)Fields.Speed],  out double spd))     return;
+        if (!double.TryParse(v[(int)Fields.TempBmp],out double tBmp))    return;
+        if (!double.TryParse(v[(int)Fields.TempDht],out double tDht))    return;
+        if (!double.TryParse(v[(int)Fields.Hum],    out double hum))     return;
+        if (!double.TryParse(v[(int)Fields.Press],  out double pres))    return;
+        if (!double.TryParse(v[(int)Fields.BattV],  out double bV))      return;
+        if (!double.TryParse(v[(int)Fields.BattPct],out double bP))      return;
+        if (!double.TryParse(v[(int)Fields.RegV],   out double rV))      return;
+        if (!double.TryParse(v[(int)Fields.CO],     out double co))      return;
+        if (!double.TryParse(v[(int)Fields.CO2],    out double co2))     return;
+        if (!double.TryParse(v[(int)Fields.CH4],    out double ch4))     return;
+
+        bool ff = v[(int)Fields.FreeFall] == "1";
+        string sd = v[(int)Fields.SdStatus];
+
+        BeginInvoke((Action)(() =>
+        {
+            lblLat.Text      = $"Lat: {lat:F4}";
+            lblLon.Text      = $"Lon: {lon:F4}";
+            lblAlt.Text      = $"Alt: {alt:F1} m";
+            lblSpeed.Text    = $"Spd: {spd:F1} m/s";
+            lblTempBmp.Text  = $"T(BMP): {tBmp:F1}°C";
+            lblTempDht.Text  = $"T(DHT): {tDht:F1}°C";
+            lblHum.Text      = $"Hum: {hum:F1}%";
+            lblPress.Text    = $"P: {pres:F1} hPa";
+            lblBattV.Text    = $"Bat: {bV:F2} V";
+            lblBattPct.Text  = $"Bat%: {bP:F0}%";
+            lblRegV.Text     = $"Reg: {rV:F2} V";
+            lblCO.Text       = $"CO: {co:F1} ppm";
+            lblCO2.Text      = $"CO₂: {co2:F1} ppm";
+            lblCH4.Text      = $"CH₄: {ch4:F1} ppm";
+            lblFreeFall.Text = $"FreeFall: {(ff ? "Yes" : "No")}";
+            lblSd.Text       = $"SD: {sd}";
+
+            dsAx.Add(double.Parse(v[(int)Fields.Ax]));
+            dsAy.Add(double.Parse(v[(int)Fields.Ay]));
+            dsAz.Add(double.Parse(v[(int)Fields.Az]));
+            dsPitch.Add(double.Parse(v[(int)Fields.Pitch]));
+            dsRoll.Add(double.Parse(v[(int)Fields.Roll]));
+            dsYaw.Add(double.Parse(v[(int)Fields.Yaw]));
+
+            dsAx.ViewWipeRight(); dsAy.ViewWipeRight(); dsAz.ViewWipeRight();
+            dsPitch.ViewWipeRight(); dsRoll.ViewWipeRight(); dsYaw.ViewWipeRight();
+
+            pltAccel.Render();
+            pltGyro.Render();
+        }));
+    }
+
+    [STAThread]
+    static void Main()
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.Run(new MainForm());
+    }
+}
